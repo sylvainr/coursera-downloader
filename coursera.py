@@ -102,32 +102,189 @@ class CourseraDownloader:
 
         return percent
 
+    def get_html_content(self, url):
+        req = urllib2.Request(url, None, self.headers)
+        return urllib2.urlopen(req).read()
+
+    def download_srt(self, url, filename):
+        with open(filename, 'wb') as f:
+            req = urllib2.Request(url, None, self.headers)
+            f.write(urllib2.urlopen(req).read())
+
     def downloadfile(self, url, filename):
         try:
-            req = urllib2.Request(url, None, self.headers)
-            response = urllib2.urlopen(req)
-        except IOError, e:
-            self.printerror(url, e)
-            return -1
-        chunk_size = 8192
-        total_size = int(response.info().getheader('Content-Length').strip())
-        bytes_so_far = 0
-        x = open("temp_" + filename, "wb")
-        start_time = time.time()
-        percent = 0
-        while percent < 100.00:
             try:
-                chunk = response.read(chunk_size)
+                req = urllib2.Request(url, None, self.headers)
+                response = urllib2.urlopen(req)
             except IOError, e:
                 self.printerror(url, e)
                 return -1
-            x.write(chunk)
-            bytes_so_far += len(chunk)
-            speed = bytes_so_far / (1024 * (time.time() - start_time))
-            percent = self.printprogress(bytes_so_far, total_size, speed)
-        x.close()
-        os.rename("temp_" + filename, filename)
+                
+            chunk_size = 8192
+            content_length_header = response.info().getheader('Content-Length')
+            total_size = int(content_length_header.strip())
+                
+            bytes_so_far = 0
+            x = open("temp_" + filename, "wb")
+            start_time = time.time()
+            percent = 0
+            
+            while percent < 100.00:
+                try:
+                    chunk = response.read(chunk_size)
+                except IOError, e:
+                    self.printerror(url, e)
+                    return -1
+                    
+                x.write(chunk)
+                bytes_so_far += len(chunk)
+                speed = bytes_so_far / (1024 * (time.time() - start_time))
+                percent = self.printprogress(bytes_so_far, total_size, speed)
+                
+            x.close()
+            os.rename("temp_" + filename, filename)
+            return 0
+        except:
+            print "Error with url '%s'" % url
+            raise
+
+    def download_slides_contents(self):
+    
+        print "Getting downloads list..."
+        ret = self.getdownloadlist()
+        if ret == -1:
+            return -1
+        print "Downloads list obtained!"
+        os.chdir(self.course['downloadfolder'])
+        if not os.path.exists(self.course['folder']):
+            os.mkdir(self.course['folder'])
+        os.chdir(self.course['folder'])
+        mydiv = self.html.find("div", "item_list")
+        xa = mydiv.find_all("a", "list_header_link")
+        xb = mydiv.find_all("ul", "item_section_list")
+
+        for num, i in enumerate(xa):
+            
+            #if num + 1 < 18: continue
+            
+            title = i.find("h3").string.strip(" \r\n").lower()
+            print "######### " + str(num + 1) + "." + title + " #########"
+            title = re.sub(r'\([^)]*\)', '', title).strip(" \r\n")
+            folder = str(num + 1) + "-" + re.sub(r'--*', '-', re.sub(r'[^A-Za-z0-9.]', '-', title))
+            cd = os.getcwd()
+            if not os.path.exists(folder):
+                os.mkdir(folder)
+            os.chdir(folder)
+            items = xb[num]
+            allli = items.find_all("a", "lecture-link")
+            
+            for a_tag in allli: 
+                video_name = a_tag.text.strip()
+                print "Doing '%s'" % video_name
+                
+                movie_page_url = a_tag['data-lecture-view-link']               
+                html_content = self.get_html_content(movie_page_url)
+                
+                regex = re.compile("\"url\":\"([^\"]+)\"", re.MULTILINE)
+                slide_urls = map(lambda x: x.replace("\\", ''), regex.findall(html_content))
+                print slide_urls
+                
+                #soup = BeautifulSoup(html_content)
+                #
+                #movie_url = soup.findAll('source', type="video/mp4")[0]['src']
+                #srt_url = soup.findAll('track', srclang="en")
+                #if len(srt_url) > 0:
+                #    srt_url = srt_url[0]['src']
+                #else:
+                #    srt_url = None
+                #    
+                #print "movie_url='%s', srt_url='%s'" % (movie_url, srt_url)
+                
+                base_file_name = re.sub(r'--*', '-', re.sub(r'[^A-Za-z0-9.]', '-', video_name)).strip('-')
+                
+                #srt_filename = base_file_name + ".srt"
+                
+                i = 0
+                for slide_url in slide_urls:
+                    i += 1
+                    slide_file_name = base_file_name + "_slide%03d.jpg" % i
+                    if(os.path.exists(slide_file_name)):
+                        print "Skipping: Already exists (%s)" % slide_file_name
+                    else:
+                        self.downloadfile(slide_url, slide_file_name)
+
+                time.sleep(1)
+
+            os.chdir(cd)
         return 0
+
+    def downloadcontents2(self):
+    
+        print "Getting downloads list..."
+        ret = self.getdownloadlist()
+        if ret == -1:
+            return -1
+        print "Downloads list obtained!"
+        os.chdir(self.course['downloadfolder'])
+        if not os.path.exists(self.course['folder']):
+            os.mkdir(self.course['folder'])
+        os.chdir(self.course['folder'])
+        mydiv = self.html.find("div", "item_list")
+        xa = mydiv.find_all("a", "list_header_link")
+        xb = mydiv.find_all("ul", "item_section_list")
+
+        for num, i in enumerate(xa):
+            
+            #if num + 1 < 18: continue
+            
+            title = i.find("h3").string.strip(" \r\n").lower()
+            print "######### " + str(num + 1) + "." + title + " #########"
+            title = re.sub(r'\([^)]*\)', '', title).strip(" \r\n")
+            folder = str(num + 1) + "-" + re.sub(r'--*', '-', re.sub(r'[^A-Za-z0-9.]', '-', title))
+            cd = os.getcwd()
+            if not os.path.exists(folder):
+                os.mkdir(folder)
+            os.chdir(folder)
+            items = xb[num]
+            allli = items.find_all("a", "lecture-link")
+            
+            for a_tag in allli: 
+                video_name = a_tag.text.strip()
+                print "Doing '%s'" % video_name
+                
+                movie_page_url = a_tag['data-lecture-view-link']
+                #print "With movie page: %s" % movie_page_url
+                
+                html_content = self.get_html_content(movie_page_url)
+                soup = BeautifulSoup(html_content)
+                movie_url = soup.findAll('source', type="video/mp4")[0]['src']
+                srt_url = soup.findAll('track', srclang="en")
+                if len(srt_url) > 0:
+                    srt_url = srt_url[0]['src']
+                else:
+                    srt_url = None
+                    
+                print "movie_url='%s', srt_url='%s'" % (movie_url, srt_url)
+                base_file_name = re.sub(r'--*', '-', re.sub(r'[^A-Za-z0-9.]', '-', video_name)).strip('-')
+                mp4_filename = base_file_name + ".mp4"
+                srt_filename = base_file_name + ".srt"
+                
+                if(os.path.exists(mp4_filename)):
+                    print "Skipping: Already exists (%s)" % mp4_filename
+                else:
+                    self.downloadfile(movie_url, mp4_filename)
+
+                if srt_url != None:
+                    if(os.path.exists(srt_filename)):
+                        print "Skipping: Already exists (%s)" % srt_filename
+                    else:
+                        self.download_srt(srt_url, srt_filename)
+
+                time.sleep(1)
+
+            os.chdir(cd)
+        return 0
+
 
     def downloadcontents(self):
         print "Getting downloads list..."
@@ -142,6 +299,7 @@ class CourseraDownloader:
         mydiv = self.html.find("div", "item_list")
         xa = mydiv.find_all("a", "list_header_link")
         xb = mydiv.find_all("ul", "item_section_list")
+
         for num, i in enumerate(xa):
             title = i.find("h3").string.strip(" \r\n").lower()
             print "######### " + str(num + 1) + "." + title + " #########"
@@ -153,6 +311,7 @@ class CourseraDownloader:
             os.chdir(folder)
             items = xb[num]
             allli = items.find_all("a", "lecture-link")
+
             for j, x in enumerate(allli):
                 ltitle = x.next_element
                 ltitle = re.sub(r'\([^)]*\)', '', ltitle).strip(" \r\n").lower()
@@ -174,6 +333,7 @@ class CourseraDownloader:
                         ext = "mp4"
                     else:
                         continue
+
                     filename = str(num + 1) + "." + str(j + 1) + "-" + re.sub(r'--*', '-', re.sub(r'[^A-Za-z0-9.]', '-', ltitle.lower())) + "." + ext
                     if (ext in self.course['downloadlist']):
                         print "File: " + filename
@@ -216,7 +376,7 @@ def main():
             course['folder'] = course['name']
         print "\nDownloading", course['name'], "to", os.path.join(course['downloadfolder'], course['folder']), "for", auth['email']
         c = CourseraDownloader(course, auth)
-        if c.downloadcontents() == -1:
+        if c.download_slides_contents() == -1:
             print "Failed :( ! Please try again"
             return
         else:
